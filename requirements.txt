@@ -3,7 +3,9 @@ uvicorn[standard]==0.30.6
 celery==5.4.0
 flower==2.0.1
 redis==5.0.8
-pyautogui==0.9.54
-pytesseract==0.3.13
-pillow==10.4.0
+# pyautogui==0.9.54   # legacy PyAutoGUI/Xvfb RPA path — commented out in favor of nodriver (see app/tasks.py)
+# pytesseract==0.3.13
+# pillow==10.4.0
 pydantic-settings==2.5.2
+nodriver==0.45.2
+minio==7.2.9

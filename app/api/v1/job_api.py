@@ -8,14 +8,14 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
 @router.post(
-    "/read-screen",
+    "/gst-login",
     response_model=JobEnqueueRead,
-    operation_id="enqueueReadScreen",
-    summary="Enqueue a read-screen job",
+    operation_id="enqueueGstLogin",
+    summary="Enqueue a GST portal login job",
 )
-def enqueue_read_screen() -> JobEnqueueRead:
-    """Enqueue a read-screen job on a Celery worker and return its task id."""
-    response = jobs_service.enqueue_read_screen()
+def enqueue_gst_login() -> JobEnqueueRead:
+    """Enqueue a GST portal login job on a Celery worker and return its task id."""
+    response = jobs_service.enqueue_gst_login()
     raise_for_status(response.status)
     return response.data
 

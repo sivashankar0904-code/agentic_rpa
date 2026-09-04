@@ -1,37 +1,28 @@
 FROM python:3.12-alpine
 
 # System deps:
-# - xvfb + xauth: virtual framebuffer so PyAutoGUI has a display to render to
-# - x11vnc: bridges the Xvfb display to VNC so a viewer (e.g. TightVNC) can watch it live
-# - xterm + xsetroot: no RPA app yet — just draws something on the otherwise
-#   blank Xvfb screen so a VNC viewer has visible proof of life
 # - chromium: Alpine has no Google Chrome package (glibc-only .deb, Alpine is
-#   musl) — Chromium is the same engine/UI family and installs natively here
-# - tesseract-ocr + tesseract-ocr-data-eng: OCR engine behind pytesseract, plus
-#   the English trained-language data (the engine package alone ships no languages)
-# - scrot: screenshot backend PyAutoGUI shells out to on Linux
-# - gcc/musl-dev/etc: build deps for wheels without musllinux builds (e.g. pillow, pyautogui deps)
-# - the gdk-pixbuf/gtk/x11 libs: runtime deps for python3-xlib / pyscreeze image handling
+#   musl) — Chromium is the same engine/UI family and installs natively here.
+#   Driven directly over CDP by nodriver (see app/tasks.py).
+# - ttf-dejavu: fonts so pages render text instead of tofu boxes.
+# - xvfb + xauth + xdpyinfo + x11vnc: TEMPORARY debug aid so the GST
+#   automation can be watched live over VNC while selectors are being worked
+#   out against the real site (xdpyinfo is entrypoint.sh's Xvfb readiness
+#   check, not needed for anything else). nodriver normally runs fully
+#   headless and needs none of this — remove these packages, the DISPLAY env
+#   below, and the worker's Xvfb/x11vnc bring-up in entrypoint.sh once
+#   selectors are finalized.
+#
+# The old xterm/tesseract/scrot/gtk/x11-lib block that used to live here
+# supported the legacy PyAutoGUI RPA path (commented out in app/tasks.py)
+# and stays gone — only re-adding the minimum needed for VNC debugging.
 RUN apk add --no-cache \
+        chromium \
+        ttf-dejavu \
         xvfb \
         xauth \
         xdpyinfo \
         x11vnc \
-        xterm \
-        setxkbmap \
-        xsetroot \
-        chromium \
-        tesseract-ocr \
-        tesseract-ocr-data-eng \
-        scrot \
-        python3-tkinter \
-        gtk+3.0 \
-        gdk-pixbuf \
-        libx11 \
-        libxext \
-        libxtst \
-        libxrandr \
-        ttf-dejavu \
     && apk add --no-cache --virtual .build-deps \
         gcc \
         musl-dev \
@@ -46,14 +37,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY app ./app
 
-ENV DISPLAY=:99 \
-    PYTHONUNBUFFERED=1 \
-    XDG_SESSION_TYPE=x11
-# XDG_SESSION_TYPE=x11 isn't set automatically by Xvfb (only a real desktop
-# session manager sets it) — but pyscreeze's Linux backend gates its scrot
-# fallback on RUNNING_X11, which it derives from this var. Without it,
-# pyautogui.screenshot() falls through to "install gnome-screenshot" even
-# though scrot is installed and Xvfb is in fact an X11 display.
+ENV PYTHONUNBUFFERED=1 \
+    DISPLAY=:99
+# DISPLAY: TEMPORARY, for the debug Xvfb/x11vnc bring-up in entrypoint.sh
+# (worker only) — drop once VNC debugging is no longer needed.
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
