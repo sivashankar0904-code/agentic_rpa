@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 
 _CODE_BY_STATUS = {
     status.HTTP_404_NOT_FOUND: "not_found",
-    status.HTTP_422_UNPROCESSABLE_CONTENT: "validation_error",
+    status.HTTP_422_UNPROCESSABLE_ENTITY: "validation_error",
 }
 
 _HTTP_STATUS_BY_SERVICE_STATUS = {
@@ -41,7 +41,7 @@ async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     return _error_response(
-        status.HTTP_422_UNPROCESSABLE_CONTENT, "validation_error", str(exc.errors())
+        status.HTTP_422_UNPROCESSABLE_ENTITY, "validation_error", str(exc.errors())
     )
 
 

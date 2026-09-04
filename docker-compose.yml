@@ -1,4 +1,22 @@
 services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -33,22 +51,33 @@ services:
     # on a real target page; 256MB gives headroom without over-provisioning.
     shm_size: "256mb"
     ports:
-      # VNC into the worker's virtual display (x11vnc, no password) — connect
-      # a viewer like TightVNC to localhost:5901 to watch PyAutoGUI live.
-      # Host port is 5901 (not 5900) to avoid clashing with a VNC server
-      # already running on the host itself. Bound to loopback only; not safe
-      # to expose beyond your own machine as-is.
+      # TEMPORARY debug aid: VNC into the worker's virtual display (x11vnc,
+      # no password) — connect a viewer like TightVNC to localhost:5901 to
+      # watch nodriver's Chromium live while GST selectors are being worked
+      # out. Host port is 5901 (not 5900) to avoid clashing with a VNC server
+      # already running on the host. Bound to loopback only. Remove this
+      # along with the debug bits in Dockerfile/entrypoint.sh once selectors
+      # are finalized and app/tasks.py goes back to headless.
       - "127.0.0.1:5901:5900"
     environment:
       AGENTIC_RPA_CELERY_BROKER_URL: redis://redis:6379/0
       AGENTIC_RPA_CELERY_RESULT_BACKEND: redis://redis:6379/1
-      DISPLAY: ":99"
+      AGENTIC_RPA_GST_URL: ${AGENTIC_RPA_GST_URL}
+      AGENTIC_RPA_GST_USERNAME: ${AGENTIC_RPA_GST_USERNAME}
+      AGENTIC_RPA_GST_PASSWORD: ${AGENTIC_RPA_GST_PASSWORD}
+      AGENTIC_RPA_MINIO_ENDPOINT: minio:9000
+      AGENTIC_RPA_MINIO_ACCESS_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECRET_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECURE: "false"
     depends_on:
       redis:
         condition: service_healthy
-    # Scale with: docker compose up --scale worker=3
-    # Each replica gets its own Xvfb via the container's own DISPLAY (design.md gap #4).
-    # Note: scaling past 1 replica will conflict on the published 5900 port above.
+      minio:
+        condition: service_healthy
+    # Scale with: docker compose up --scale worker=3 — while the debug VNC
+    # port above is in place, scaling past 1 replica will conflict on the
+    # published 5900 port (same constraint as the old PyAutoGUI setup).
+    # Once VNC debugging is removed, replicas need no display/port coordination.
 
   beat:
     build: .
@@ -76,3 +105,4 @@ services:
 
 volumes:
   redis-data:
+  minio-data:

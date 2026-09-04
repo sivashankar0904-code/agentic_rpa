@@ -1,0 +1,5 @@
+# Force LF for shell scripts regardless of platform checkout settings.
+# A CRLF entrypoint breaks its shebang inside Linux containers
+# ("exec /entrypoint.sh: no such file or directory") even though the file
+# looks fine on Windows.
+*.sh text eol=lf
