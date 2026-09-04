@@ -1,0 +1,17 @@
+meta {
+  name: Enqueue Read Screen
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/jobs/read-screen
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("taskId", res.body.task_id);
+  }
+}

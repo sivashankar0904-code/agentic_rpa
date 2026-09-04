@@ -1,0 +1,9 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+celery==5.4.0
+flower==2.0.1
+redis==5.0.8
+pyautogui==0.9.54
+pytesseract==0.3.13
+pillow==10.4.0
+pydantic-settings==2.5.2
