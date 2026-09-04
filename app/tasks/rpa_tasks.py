@@ -1,10 +1,21 @@
+"""RPA/browser-automation Celery tasks — the "rpa" queue.
+
+Only imported by the rpa-worker service (see docker/entrypoint.sh's
+--include app.tasks.rpa_tasks), which is the only image with nodriver/
+Chromium/Xvfb installed (Dockerfile). Keep this module free of torch/numpy/
+pillow imports — those belong in training_tasks.py, imported only by the
+training-worker image (Dockerfile.training).
+"""
+
 import asyncio
 import tempfile
 from pathlib import Path
 
+import requests
 from nodriver.core.connection import ProtocolException
 
 from app.celery_app import celery_app
+from app.core.captcha_labels.captcha_labels import record_captcha
 from app.core.config.config import get_settings
 from app.core.jobs.captcha_store import save_captcha
 from app.core.jobs.profile_store import load_profile
@@ -99,7 +110,10 @@ async def _gst_login(task_id: str) -> dict:
     """Navigate to the GST portal, log in, and capture the captcha to MinIO.
 
     Flow: open the GST URL -> click the Login link -> fill username/password
-    -> screenshot the captcha image element -> upload it to MinIO. Stops
+    -> screenshot the captcha image element -> upload it to MinIO -> record
+    an unlabeled row for it in the captcha_labels table (see
+    app/core/captcha_labels/captcha_labels.py) so a human can fill in the
+    answer and flip is_solved for the training task to later pick up. Stops
     short of submitting the captcha itself (needs OCR/solving, not yet
     defined — see design.md) so the task's result is the captcha's MinIO
     object key for a human/downstream step to read and solve.
@@ -151,6 +165,7 @@ async def _gst_login(task_id: str) -> dict:
                 captcha_bytes = screenshot_path.read_bytes()
 
             object_name = save_captcha(task_id, captcha_bytes)
+            record_captcha(object_name)
         finally:
             # Browser.stop() is a plain sync method (not a coroutine) in
             # nodriver — awaiting it fails with "NoneType can't be used in
@@ -163,3 +178,18 @@ async def _gst_login(task_id: str) -> dict:
 @celery_app.task(name="agentic_rpa.gst_login", bind=True)
 def gst_login(self) -> dict:
     return asyncio.run(_gst_login(self.request.id))
+
+
+@celery_app.task(name="agentic_rpa.trigger_gst_login")
+def trigger_gst_login() -> dict:
+    """Beat-scheduled: POST the jobs API's enqueue-gst-login endpoint.
+
+    Goes over HTTP to app/api/v1/job_api.py's enqueueGstLogin route (rather
+    than calling the gst_login task directly) so the same enqueue path the
+    API exposes to callers is what beat exercises every 30s.
+    """
+    settings = get_settings()
+    url = f"{settings.api_base_url}/api/v1/jobs/gst-login"
+    response = requests.post(url, timeout=10)
+    response.raise_for_status()
+    return response.json()

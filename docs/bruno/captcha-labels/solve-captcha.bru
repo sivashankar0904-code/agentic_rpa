@@ -1,0 +1,17 @@
+meta {
+  name: Solve Captcha
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/captcha-labels/{{captchaObjectName}}/solve
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "label": "a1b2c3"
+  }
+}

@@ -1,0 +1,25 @@
+# Training-worker image only (Dockerfile.training, python:3.12-slim) — never
+# installed into the RPA image (Dockerfile, python:3.12-alpine). Kept in a
+# separate file, not merged into requirements.txt, specifically so torch
+# never ends up on Alpine: it publishes no musl-compatible wheel or sdist,
+# so pip has nothing to install there at all.
+celery==5.4.0
+redis==5.0.8
+pydantic-settings==2.5.2
+minio==7.2.9
+requests==2.32.3
+psycopg[binary]==3.2.3
+sqlalchemy==2.0.35
+
+# Captcha CNN training pipeline (see app/core/ml/, app/tasks/training_tasks.py).
+# torch, not tensorflow: TensorFlow also has no prebuilt musl wheel, but even
+# on this slim/glibc image torch is preferred for CPU-wheel install
+# simplicity and to match app/core/ml/'s existing PyTorch implementation.
+torch==2.4.1
+numpy==1.26.4
+pillow==10.4.0
+
+# Experiment tracking: logs per-epoch loss/metrics from
+# app/core/ml/train.py so training runs are visible in the MLflow UI
+# instead of only worker logs.
+mlflow==2.17.2

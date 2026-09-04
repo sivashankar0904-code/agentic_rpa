@@ -8,6 +8,7 @@ T = TypeVar("T")
 class ServiceStatus(StrEnum):
     SUCCESS = "success"
     NOT_FOUND = "not_found"
+    TIMEOUT = "timeout"
 
 
 @dataclass

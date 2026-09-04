@@ -1,0 +1,11 @@
+meta {
+  name: Predict Captcha
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/captcha-labels/{{captchaObjectName}}/predict
+  body: none
+  auth: none
+}

@@ -28,6 +28,25 @@ services:
       timeout: 3s
       retries: 5
 
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    restart: unless-stopped
+    # File-backed tracking store + artifact root, both on the mlflow-data
+    # volume — enough for a single-node setup; swap for a real DB/S3 backend
+    # (e.g. point --backend-store-uri at Postgres, --artifacts-destination at
+    # MinIO) if this needs to survive being anything more than one box.
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri /mlflow/tracking
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlflow
+
   api:
     build: .
     command: ["api"]
@@ -37,11 +56,27 @@ services:
     environment:
       AGENTIC_RPA_CELERY_BROKER_URL: redis://redis:6379/0
       AGENTIC_RPA_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      # The /label UI and /api/v1/captcha-labels routes (see
+      # app/api/v1/label_ui.py, captcha_label_api.py) query captcha_labels
+      # and fetch captcha images directly from this process — same
+      # captcha_labels Postgres and MinIO as rpa-worker/training-worker.
+      AGENTIC_RPA_MINIO_ENDPOINT: minio:9000
+      AGENTIC_RPA_MINIO_ACCESS_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECRET_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECURE: "false"
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSL_MODE: ${DB_SSL_MODE}
     depends_on:
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
 
-  worker:
+  rpa-worker:
     build: .
     command: ["worker"]
     restart: unless-stopped
@@ -57,7 +92,7 @@ services:
       # out. Host port is 5901 (not 5900) to avoid clashing with a VNC server
       # already running on the host. Bound to loopback only. Remove this
       # along with the debug bits in Dockerfile/entrypoint.sh once selectors
-      # are finalized and app/tasks.py goes back to headless.
+      # are finalized and app/tasks/rpa_tasks.py goes back to headless.
       - "127.0.0.1:5901:5900"
     environment:
       AGENTIC_RPA_CELERY_BROKER_URL: redis://redis:6379/0
@@ -69,15 +104,111 @@ services:
       AGENTIC_RPA_MINIO_ACCESS_KEY: minioadmin
       AGENTIC_RPA_MINIO_SECRET_KEY: minioadmin
       AGENTIC_RPA_MINIO_SECURE: "false"
+      # External Postgres holding the captcha ground-truth labels table,
+      # written to by record_captcha (see
+      # app/core/captcha_labels/captcha_labels.py and config.py's db_*
+      # fields). Unprefixed (not AGENTIC_RPA_*) to match the existing DB_*
+      # vars in .env; provisioned outside this compose file.
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSL_MODE: ${DB_SSL_MODE}
     depends_on:
       redis:
         condition: service_healthy
       minio:
         condition: service_healthy
-    # Scale with: docker compose up --scale worker=3 — while the debug VNC
-    # port above is in place, scaling past 1 replica will conflict on the
-    # published 5900 port (same constraint as the old PyAutoGUI setup).
+    # Scale with: docker compose up --scale rpa-worker=3 — while the debug
+    # VNC port above is in place, scaling past 1 replica will conflict on
+    # the published 5900 port (same constraint as the old PyAutoGUI setup).
     # Once VNC debugging is removed, replicas need no display/port coordination.
+
+  training-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.training
+    command: ["training-worker"]
+    restart: unless-stopped
+    environment:
+      AGENTIC_RPA_CELERY_BROKER_URL: redis://redis:6379/0
+      AGENTIC_RPA_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      AGENTIC_RPA_MINIO_ENDPOINT: minio:9000
+      AGENTIC_RPA_MINIO_ACCESS_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECRET_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECURE: "false"
+      AGENTIC_RPA_MLFLOW_TRACKING_URI: http://mlflow:5000
+      # Base URL trigger_train_captcha_model POSTs to (mirrors beat's own
+      # var below) — this worker runs both the beat-triggered task and the
+      # real training task, so it needs it too, not just beat.
+      AGENTIC_RPA_API_BASE_URL: http://api:8000
+      # Same captcha_labels Postgres as rpa-worker — see its comment above.
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSL_MODE: ${DB_SSL_MODE}
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+      api:
+        condition: service_started
+
+  predict-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.predict
+    command: ["predict-worker"]
+    restart: unless-stopped
+    environment:
+      AGENTIC_RPA_CELERY_BROKER_URL: redis://redis:6379/0
+      AGENTIC_RPA_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      AGENTIC_RPA_MINIO_ENDPOINT: minio:9000
+      AGENTIC_RPA_MINIO_ACCESS_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECRET_KEY: minioadmin
+      AGENTIC_RPA_MINIO_SECURE: "false"
+      # No DB_* vars: predict_tasks.py only touches MinIO (model + captcha
+      # image), never app.core.captcha_labels/model_versions — unlike
+      # rpa-worker/training-worker, this worker has no Postgres dependency.
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  validator-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.validator
+    command: ["validator-worker"]
+    restart: unless-stopped
+    environment:
+      AGENTIC_RPA_CELERY_BROKER_URL: redis://redis:6379/0
+      AGENTIC_RPA_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      # Base URL validate_captchas POSTs to for each captcha's /predict
+      # call (see app/tasks/validator_tasks.py) — same var as beat/
+      # training-worker use for their own HTTP triggers.
+      AGENTIC_RPA_API_BASE_URL: http://api:8000
+      # No MINIO_* vars: this worker never touches MinIO directly — it
+      # calls the predict API over HTTP and reads/writes captcha_labels
+      # rows directly (needs DB_* below), unlike predict-worker.
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSL_MODE: ${DB_SSL_MODE}
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
 
   beat:
     build: .
@@ -86,9 +217,19 @@ services:
     environment:
       AGENTIC_RPA_CELERY_BROKER_URL: redis://redis:6379/0
       AGENTIC_RPA_CELERY_RESULT_BACKEND: redis://redis:6379/1
+      # Base URL beat's trigger_gst_login task POSTs to. Defaults to the
+      # compose service name/port (see app/core/config/config.py); set
+      # explicitly here so it's visible alongside the other beat env vars.
+      AGENTIC_RPA_API_BASE_URL: http://api:8000
+      # How often trigger_train_captcha_model fires (seconds). Override in
+      # .env if you want a different cadence than the 600s (10m) default —
+      # see app/core/config/config.py's training_schedule_interval_seconds.
+      AGENTIC_RPA_TRAINING_SCHEDULE_INTERVAL_SECONDS: ${AGENTIC_RPA_TRAINING_SCHEDULE_INTERVAL_SECONDS:-600}
     depends_on:
       redis:
         condition: service_healthy
+      api:
+        condition: service_started
 
   flower:
     build: .
@@ -106,3 +247,4 @@ services:
 volumes:
   redis-data:
   minio-data:
+  mlflow-data:

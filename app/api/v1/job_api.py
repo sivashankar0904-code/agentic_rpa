@@ -20,6 +20,19 @@ def enqueue_gst_login() -> JobEnqueueRead:
     return response.data
 
 
+@router.post(
+    "/train-captcha-model",
+    response_model=JobEnqueueRead,
+    operation_id="enqueueTrainCaptchaModel",
+    summary="Enqueue a captcha CNN training job",
+)
+def enqueue_train_captcha_model() -> JobEnqueueRead:
+    """Enqueue a captcha model training job on a Celery worker and return its task id."""
+    response = jobs_service.enqueue_train_captcha_model()
+    raise_for_status(response.status)
+    return response.data
+
+
 @router.get(
     "/{task_id}",
     response_model=JobStatusRead,

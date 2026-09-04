@@ -1,0 +1,12 @@
+<div class="row">
+    <img src="/label/{{ object_name }}/image" alt="{{ object_name }}" width="200" height="50" />
+    <form
+        hx-post="/label/{{ object_name }}/solve"
+        hx-target="closest .row"
+        hx-swap="outerHTML swap:200ms"
+    >
+        <input type="text" name="label" placeholder="Enter captcha text" autocomplete="off" required />
+        <button type="submit">Save</button>
+        <span class="error">{{ error }}</span>
+    </form>
+</div>

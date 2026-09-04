@@ -1,0 +1,8 @@
+{% if captchas %}
+    {% for captcha in captchas %}
+        {% set autofocus = loop.first %}
+        {% include "_captcha_row.html" %}
+    {% endfor %}
+{% else %}
+    <p class="empty">Nothing left to label 🎉</p>
+{% endif %}
