@@ -1,0 +1,11 @@
+meta {
+  name: Get Job Status
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/jobs/{{taskId}}
+  body: none
+  auth: none
+}
