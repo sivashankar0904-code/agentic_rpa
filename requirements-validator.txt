@@ -1,0 +1,11 @@
+# Validator-worker image only (Dockerfile.validator). Deliberately lean —
+# no torch here: validator_tasks.py calls the predict API over HTTP rather
+# than running inference itself (predict-worker does that), so it only
+# needs requests plus the same base worker/Postgres stack as the other
+# workers.
+celery==5.4.0
+redis==5.0.8
+pydantic-settings==2.5.2
+requests==2.32.3
+psycopg[binary]==3.2.3
+sqlalchemy==2.0.35

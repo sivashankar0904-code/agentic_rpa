@@ -1,0 +1,18 @@
+# Predict-worker image only (Dockerfile.predict, python:3.12-slim) — never
+# installed into the RPA image (Dockerfile, python:3.12-alpine). Kept
+# separate from both requirements.txt and requirements-training.txt: needs
+# torch (like training) but not mlflow (inference doesn't log runs) and not
+# nodriver/Chromium (never touches a browser).
+celery==5.4.0
+redis==5.0.8
+pydantic-settings==2.5.2
+minio==7.2.9
+psycopg[binary]==3.2.3
+sqlalchemy==2.0.35
+
+# Captcha CNN inference (see app/core/ml/predict.py, app/tasks/predict_tasks.py).
+# Same torch version as requirements-training.txt so a model trained there
+# loads identically here.
+torch==2.4.1
+numpy==1.26.4
+pillow==10.4.0

@@ -1,0 +1,17 @@
+meta {
+  name: Enqueue Train Captcha Model
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/jobs/train-captcha-model
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("taskId", res.body.task_id);
+  }
+}

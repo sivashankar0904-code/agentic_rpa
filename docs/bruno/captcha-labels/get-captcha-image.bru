@@ -1,0 +1,11 @@
+meta {
+  name: Get Captcha Image
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/captcha-labels/{{captchaObjectName}}/image
+  body: none
+  auth: none
+}

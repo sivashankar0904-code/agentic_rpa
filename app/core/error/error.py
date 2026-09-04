@@ -10,10 +10,12 @@ logger = get_logger(__name__)
 _CODE_BY_STATUS = {
     status.HTTP_404_NOT_FOUND: "not_found",
     status.HTTP_422_UNPROCESSABLE_ENTITY: "validation_error",
+    status.HTTP_503_SERVICE_UNAVAILABLE: "timeout",
 }
 
 _HTTP_STATUS_BY_SERVICE_STATUS = {
     ServiceStatus.NOT_FOUND: status.HTTP_404_NOT_FOUND,
+    ServiceStatus.TIMEOUT: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 

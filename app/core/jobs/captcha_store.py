@@ -34,3 +34,16 @@ def save_captcha(task_id: str, image_bytes: bytes) -> str:
     logger.info("Saved captcha to minio://%s/%s (%d bytes)",
                 settings.minio_captcha_bucket, object_name, len(image_bytes))
     return object_name
+
+
+def download_captcha(object_name: str) -> bytes:
+    """Download a previously-saved captcha screenshot's raw image bytes."""
+    settings = get_settings()
+    client = get_minio_client()
+
+    response = client.get_object(settings.minio_captcha_bucket, object_name)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
