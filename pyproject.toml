@@ -1,0 +1,17 @@
+[project]
+name = "agentic-rpa"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.14"
+dependencies = [
+    "boto3>=1.43.93",
+    "numpy>=2.5.3",
+    "opencv-python>=5.0.0.93",
+    "python-dotenv>=1.2.3",
+]
+
+[tool.uv]
+# .venv lives on the Windows filesystem; when run from WSL, uv can't
+# hardlink across the Windows/Linux boundary and falls back to copying
+# anyway -- set this explicitly so it does so without the warning.
+link-mode = "copy"
