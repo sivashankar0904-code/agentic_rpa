@@ -1,12 +1,21 @@
 """
-Fetch captcha images from the MinIO "rpa-captchas" bucket, run them through
-the preprocessing pipeline, and write the results to a local "preprocessed"
+Fetch captcha images from the MinIO "rpa-captchas" bucket, clean and split
+them into characters, and write one stitched image per captcha to a local
 folder.
 
+Each output is the six characters normalised to a uniform size and laid out
+with gaps between them, so no character is larger than its neighbours and
+touching glyphs end up visibly separated. See
+docs/captcha_cleaning_strategy.md.
+
 Usage:
-    python app.py
+    python app.py                       # default limit
+    python app.py --all                 # every object in the bucket
+    python app.py --limit 50            # first 50
+    python app.py --out some/folder     # write somewhere else
 """
 
+import argparse
 import os
 
 import cv2
@@ -14,10 +23,12 @@ import numpy as np
 
 from config import MINIO_URL  # noqa: F401  (re-exported context for readers)
 from read_minio import get_minio_client
-from preprocess import preprocess_captcha
+from preprocess import clean_grayscale, remove_border, sauvola
+from segment import split_grayscale_with_masks, stitch
 
 BUCKET_NAME = "rpa-captchas"
-OUTPUT_DIR = "preprocessed"
+OUTPUT_DIR = "stitched"
+DEFAULT_LIMIT = 10
 
 
 def list_captcha_keys(client, bucket: str) -> list[str]:
@@ -46,34 +57,61 @@ def ensure_output_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def save_preprocessed_image(image: np.ndarray, key: str, output_dir: str) -> str:
-    """Write a preprocessed image to the output folder, named after its key."""
+def save_image(image: np.ndarray, key: str, output_dir: str) -> str:
+    """Write an image to the output folder, named after its object key."""
     filename = os.path.basename(key)
     output_path = os.path.join(output_dir, filename)
     cv2.imwrite(output_path, image)
     return output_path
 
 
-def process_bucket(bucket: str = BUCKET_NAME, output_dir: str = OUTPUT_DIR) -> None:
-    """Download every captcha in the bucket, preprocess it, and save it locally."""
+def stitch_captcha(image: np.ndarray) -> np.ndarray:
+    """Raw captcha -> cleaned, split, and re-stitched with even spacing."""
+    gray = clean_grayscale(image)
+    binary = remove_border(sauvola(gray), thickness=3)
+    return stitch(split_grayscale_with_masks(gray, binary))
+
+
+def process_bucket(bucket: str = BUCKET_NAME, output_dir: str = OUTPUT_DIR,
+                   limit: int | None = DEFAULT_LIMIT) -> None:
+    """Download captchas from the bucket, stitch them, and save them locally."""
     client = get_minio_client()
     ensure_output_dir(output_dir)
 
     keys = list_captcha_keys(client, bucket)
     print(f"Found {len(keys)} object(s) in bucket '{bucket}'")
 
+    if limit is not None:
+        keys = keys[:limit]
+        print(f"Processing {len(keys)} of them (limit: {limit})")
+    else:
+        print(f"Processing all {len(keys)}")
+
+    succeeded = 0
+    failed = 0
     for key in keys:
         try:
             image = download_image(client, bucket, key)
-            processed = preprocess_captcha(image)
-            output_path = save_preprocessed_image(processed, key, output_dir)
-            print(f"Processed {key} -> {output_path}")
+            save_image(stitch_captcha(image), key, output_dir)
+            succeeded += 1
         except Exception as exc:
+            failed += 1
             print(f"Failed to process {key}: {exc}")
+
+    print(f"Wrote {succeeded} image(s) to '{output_dir}/'" +
+          (f", {failed} failed" if failed else ""))
 
 
 def main() -> None:
-    process_bucket()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", default=OUTPUT_DIR, help="output folder")
+    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
+                        help="how many objects to process")
+    parser.add_argument("--all", action="store_true",
+                        help="process every object in the bucket")
+    args = parser.parse_args()
+
+    process_bucket(output_dir=args.out, limit=None if args.all else args.limit)
 
 
 if __name__ == "__main__":
